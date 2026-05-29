@@ -5,7 +5,37 @@ const { encrypt, decrypt } = require('../utils/encryption');
 const { isAuthenticated, requireRole } = require('../middleware/auth');
 const { auditLog } = require('../middleware/audit');
 const mailer = require('../services/mailer');
+// Bulk import SMTPs
+router.post('/bulk', isAuthenticated, async (req, res) => {
+  const { smtps } = req.body;
+  if (!Array.isArray(smtps)) return res.status(400).json({ error: 'Invalid data format' });
 
+  const client = await db.getClient();
+  try {
+    await client.query('BEGIN');
+    let count = 0;
+
+    for (const smtp of smtps) {
+      const encryptedPassword = encrypt(smtp.password);
+      await client.query(
+        `INSERT INTO smtp_servers (name, host, port, encryption, username, password_encrypted, auth_method, priority, created_by)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [smtp.name, smtp.host, smtp.port, smtp.encryption, smtp.username, encryptedPassword, 'login', smtp.priority, req.user.id]
+      );
+      count++;
+    }
+
+    await client.query('COMMIT');
+    await auditLog(req, 'bulk_import_smtp', 'smtp_server', null, { count });
+    
+    res.json({ success: true, count });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+});
 // List all SMTP servers
 router.get('/', isAuthenticated, async (req, res) => {
   try {

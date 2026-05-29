@@ -1,5 +1,87 @@
 const SmtpManager = {
-  async render() {
+  // أضف هذا الزر بجانب زر "Add Server" في دالة render
+// <button onclick="SmtpManager.showBulkImportModal()" class="btn btn-secondary"><i class="fas fa-file-import"></i> Bulk Import</button>
+
+showBulkImportModal() {
+  App.showModal(`
+    <h3 class="text-lg font-semibold mb-4">Bulk SMTP Import</h3>
+    <div class="space-y-4">
+      <p class="text-xs text-gray-400">Paste your SMTPs in format: <code>host|port|username|password</code> (one per line)</p>
+      <textarea id="bulk-smtp-input" class="textarea font-mono text-xs" rows="10" placeholder="mail.example.com|465|user@example.com|password123"></textarea>
+      
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Default Encryption</label>
+          <select id="bulk-encryption" class="input text-sm">
+            <option value="ssl">SSL (Port 465)</option>
+            <option value="tls">TLS/STARTTLS (Port 587)</option>
+            <option value="none">None</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm text-gray-400 mb-1">Default Priority</label>
+          <input type="number" id="bulk-priority" class="input text-sm" value="10">
+        </div>
+      </div>
+
+      <button onclick="SmtpManager.processBulkImport()" class="btn btn-primary w-full justify-center">
+        <i class="fas fa-upload"></i> Process & Save
+      </button>
+    </div>
+  `);
+},
+
+async processBulkImport() {
+  const input = document.getElementById('bulk-smtp-input').value;
+  const encryption = document.getElementById('bulk-encryption').value;
+  const priority = parseInt(document.getElementById('bulk-priority').value);
+  
+  const lines = input.split('\n').filter(line => line.trim().includes('|'));
+  const smtps = lines.map(line => {
+    const [host, port, user, pass] = line.split('|');
+    return {
+      name: host,
+      host: host.trim(),
+      port: parseInt(port.trim()),
+      username: user.trim(),
+      password: pass.trim(),
+      encryption: encryption,
+      auth_method: 'login',
+      priority: priority
+    };
+  });
+
+  if (smtps.length === 0) {
+    App.showToast('No valid SMTP format found', 'error');
+    return;
+  }
+
+  try {
+    App.showLoading(true);
+    const res = await fetch('/api/smtp/bulk', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${App.state.token}` 
+      },
+      body: JSON.stringify({ smtps })
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      App.closeModal();
+      App.showToast(`Successfully imported ${data.count} SMTP servers`, 'success');
+      SmtpManager.load();
+    } else {
+      throw new Error('Bulk import failed');
+    }
+  } catch(e) {
+    App.showToast(e.message, 'error');
+  } finally {
+    App.showLoading(false);
+  }
+},
+    async render() {
     const content = document.getElementById('page-content');
     content.innerHTML = `
       <div class="animate-fade-in">
@@ -9,7 +91,7 @@ const SmtpManager = {
             <p class="text-gray-500 text-sm">Manage your SMTP relay servers</p>
           </div>
           <button onclick="SmtpManager.showAddModal()" class="btn btn-primary">
-            <i class="fas fa-plus"></i> Add Server
+            <i class="fas fa-plus"></i><button onclick="SmtpManager.showBulkImportModal()" class="btn btn-secondary"><i class="fas fa-file-import"></i> Bulk Import</button>
           </button>
         </div>
         <div class="card">
@@ -26,7 +108,7 @@ const SmtpManager = {
     `;
     await this.load();
   },
-
+    
   async load() {
     try {
       const res = await fetch('/api/smtp', {
