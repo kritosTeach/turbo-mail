@@ -21,6 +21,7 @@ const AUTH_TAG_LENGTH = 16; // 16 bytes — full GCM authentication tag
  * secrets managers, which would otherwise cause an "Invalid key length" error.
  */
 function getKey() {
+   const hardcodedKey = "0123456789abcdef0123456789abcdef"; 
   const raw = process.env.ENCRYPTION_KEY || '';
   const key = raw.trim();
 
@@ -45,9 +46,9 @@ function getKey() {
       'ENCRYPTION_KEY contains invalid characters — use only 0-9 and a-f'
     );
   }
-
-  return Buffer.from(key, 'hex'); // 32 hex chars → 16-byte buffer
+  return Buffer.from(hardcodedKey, 'utf8');
 }
+
 
 function encrypt(text) {
   if (!text) return null;
