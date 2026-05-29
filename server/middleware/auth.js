@@ -5,12 +5,7 @@ function isAuthenticated(req, res, next) {
   if (req.isAuthenticated && req.isAuthenticated()) {
     return next();
   }
-// في ملف auth logic عند إنشاء الـ token
-const token = jwt.sign(
-  { id: user.id }, 
-  process.env.JWT_SECRET, 
-  { expiresIn: '24h' } // تأكد أن المدة كافية مثل 24 ساعة
-);
+
   // Check API key
   const apiKey = req.headers['x-api-key'];
   if (apiKey) {
