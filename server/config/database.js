@@ -20,12 +20,36 @@ pool.on('connect', () => {
 });
 
 async function runMigrations() {
-  const sqlPath = path.join(__dirname, '..', '..', 'migrations', 'init.sql');
-  const sql = fs.readFileSync(sqlPath, 'utf8');
+  const migrationsDir = path.join(__dirname, '..', '..', 'migrations');
   const client = await pool.connect();
   try {
     logger.info('Running database migrations...');
-    await client.query(sql);
+
+    // Run the base schema first
+    const initSql = fs.readFileSync(path.join(migrationsDir, 'init.sql'), 'utf8');
+    await client.query(initSql);
+    logger.info('Base schema migration completed');
+
+    // Run numbered migrations in order
+    const migrationFiles = fs.readdirSync(migrationsDir)
+      .filter(f => /^\d+.*\.sql$/.test(f))
+      .sort();
+
+    for (const file of migrationFiles) {
+      const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+      try {
+        await client.query(sql);
+        logger.info(`Migration applied: ${file}`);
+      } catch (migErr) {
+        // Ignore "already done" errors (e.g. column already TEXT) so re-runs are safe
+        if (migErr.message && migErr.message.includes('already exists')) {
+          logger.info(`Migration skipped (already applied): ${file}`);
+        } else {
+          logger.warn(`Migration warning for ${file}: ${migErr.message}`);
+        }
+      }
+    }
+
     logger.info('Database migrations completed successfully');
   } catch (err) {
     logger.error('Database migration failed', { error: err.message });

@@ -36,27 +36,76 @@ async processBulkImport() {
   const encryption = document.getElementById('bulk-encryption').value;
   const priority = parseInt(document.getElementById('bulk-priority').value) || 0;
 
-  // Split by newlines, trim each line, drop empty lines and lines without a pipe
-  const lines = input.split('\n')
-    .map(l => l.trim())
-    .filter(l => l && l.includes('|'));
-
+  const rawLines = input.split('\n');
   const smtps = [];
-  for (const line of lines) {
+  let skippedCount = 0;
+
+  for (const rawLine of rawLines) {
+    const line = rawLine.trim();
+
+    // Skip empty lines
+    if (!line) {
+      console.log('Line skipped: Empty line');
+      skippedCount++;
+      continue;
+    }
+
+    // Must contain at least one pipe
+    if (!line.includes('|')) {
+      console.log(`Line skipped: No pipe delimiter found — "${line}"`);
+      skippedCount++;
+      continue;
+    }
+
     const parts = line.split('|').map(p => p.trim());
-    // Require exactly 4 parts: host, port, username, password
-    if (parts.length !== 4) continue;
 
-    const [host, rawPort, username, password] = parts;
-    const port = parseInt(rawPort, 10);
+    // Need at least 4 parts: host, port, username, password
+    if (parts.length < 4) {
+      console.log(`Line skipped: Missing parts (need at least 4, got ${parts.length}) — "${line}"`);
+      skippedCount++;
+      continue;
+    }
 
-    // Skip lines where any required field is empty or port is not a number
-    if (!host || !username || !password || isNaN(port)) continue;
+    // host = first part, port = second part, username = third part,
+    // password = everything after (rejoined with pipe to preserve pipe chars in passwords)
+    const host = parts[0];
+    const rawPort = parts[1];
+    const username = parts[2];
+    const password = parts.slice(3).join('|');
+
+    // Validate host
+    if (!host) {
+      console.log(`Line skipped: Missing host — "${line}"`);
+      skippedCount++;
+      continue;
+    }
+
+    // Validate port — extract digits only, then range-check
+    const portNum = Number(rawPort.replace(/\D/g, ''));
+    if (!portNum || portNum < 1 || portNum > 65535) {
+      console.log(`Line skipped: Invalid port: ${rawPort} — "${line}"`);
+      skippedCount++;
+      continue;
+    }
+
+    // Validate username
+    if (!username) {
+      console.log(`Line skipped: Missing username — "${line}"`);
+      skippedCount++;
+      continue;
+    }
+
+    // Validate password
+    if (!password) {
+      console.log(`Line skipped: Missing password — "${line}"`);
+      skippedCount++;
+      continue;
+    }
 
     smtps.push({
       name: host,
       host,
-      port,
+      port: portNum,
       username,
       password,
       encryption,
@@ -66,7 +115,10 @@ async processBulkImport() {
   }
 
   if (smtps.length === 0) {
-    App.showToast('No valid entries found. Use format: host|port|user|pass', 'error');
+    App.showToast(
+      `No valid entries found (${skippedCount} skipped). Check console for details. Use format: host|port|user|pass`,
+      'error'
+    );
     return;
   }
 
@@ -85,10 +137,14 @@ async processBulkImport() {
 
     if (res.ok) {
       App.closeModal();
-      const msg = data.failed > 0
-        ? `Imported ${data.count} SMTP server(s); ${data.failed} skipped`
+      const totalFailed = (data.failed || 0) + skippedCount;
+      const msg = totalFailed > 0
+        ? `Imported ${data.count} SMTP server(s); ${totalFailed} skipped`
         : `Successfully imported ${data.count} SMTP server(s)`;
-      App.showToast(msg, data.failed > 0 ? 'warning' : 'success');
+      App.showToast(msg, totalFailed > 0 ? 'warning' : 'success');
+      if (data.failures && data.failures.length > 0) {
+        data.failures.forEach(f => console.log(`Server-side skip [${f.entry}]: ${f.reason}`));
+      }
       SmtpManager.load();
     } else {
       throw new Error(data.error || 'Bulk import failed');

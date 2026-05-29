@@ -16,23 +16,44 @@ router.post('/bulk', isAuthenticated, async (req, res) => {
   const failures = [];
 
   for (const smtp of smtps) {
-    // Validate required fields
-    if (!smtp.host || !smtp.port || !smtp.username || !smtp.password) {
-      failures.push({ entry: smtp.host || '(unknown)', reason: 'Missing required fields' });
+    const entry = smtp.host || '(unknown)';
+
+    // Validate each required field individually for precise error reporting
+    if (!smtp.host || String(smtp.host).trim() === '') {
+      const reason = 'Missing or empty host';
+      console.warn(`[bulk-smtp] Skipping entry: ${reason}`, smtp);
+      failures.push({ entry, reason });
+      continue;
+    }
+    if (!smtp.username || String(smtp.username).trim() === '') {
+      const reason = 'Missing or empty username';
+      console.warn(`[bulk-smtp] Skipping ${entry}: ${reason}`);
+      failures.push({ entry, reason });
+      continue;
+    }
+    if (!smtp.password || String(smtp.password).trim() === '') {
+      const reason = 'Missing or empty password';
+      console.warn(`[bulk-smtp] Skipping ${entry}: ${reason}`);
+      failures.push({ entry, reason });
       continue;
     }
 
-    const port = parseInt(smtp.port, 10);
-    if (isNaN(port)) {
-      failures.push({ entry: smtp.host, reason: 'Invalid port number' });
+    // Port validation: accept numeric strings, strip non-digits, range-check
+    const portNum = parseInt(String(smtp.port).replace(/\D/g, ''), 10);
+    if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      const reason = `Invalid port: ${smtp.port}`;
+      console.warn(`[bulk-smtp] Skipping ${entry}: ${reason}`);
+      failures.push({ entry, reason });
       continue;
     }
 
     let encryptedPassword;
     try {
-      encryptedPassword = encrypt(smtp.password);
+      encryptedPassword = encrypt(String(smtp.password));
     } catch (encErr) {
-      failures.push({ entry: smtp.host, reason: `Encryption error: ${encErr.message}` });
+      const reason = `Encryption error: ${encErr.message}`;
+      console.error(`[bulk-smtp] Skipping ${entry}: ${reason}`);
+      failures.push({ entry, reason });
       continue;
     }
 
@@ -41,12 +62,15 @@ router.post('/bulk', isAuthenticated, async (req, res) => {
       await client.query(
         `INSERT INTO smtp_servers (name, host, port, encryption, username, password_encrypted, auth_method, priority, created_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [smtp.name || smtp.host, smtp.host, port, smtp.encryption || 'tls',
-         smtp.username, encryptedPassword, 'login', smtp.priority || 0, req.user.id]
+        [smtp.name || smtp.host, String(smtp.host).trim(), portNum,
+         smtp.encryption || 'tls', String(smtp.username).trim(),
+         encryptedPassword, 'login', smtp.priority || 0, req.user.id]
       );
       succeeded++;
     } catch (dbErr) {
-      failures.push({ entry: smtp.host, reason: dbErr.message });
+      const reason = dbErr.message;
+      console.error(`[bulk-smtp] DB error for ${entry}: ${reason}`);
+      failures.push({ entry, reason });
     } finally {
       client.release();
     }
