@@ -9,7 +9,7 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const passport = require('./config/passport');
 const logger = require('./utils/logger');
-const { runMigrations } = require('./config/database');
+const { runMigrations, initializeAdmin } = require('./config/database');
 
 const app = express();
 const httpServer = createServer(app);
@@ -113,6 +113,13 @@ async function start() {
     await runMigrations();
   } catch (err) {
     logger.error('Failed to run database migrations, aborting startup', { error: err.message });
+    process.exit(1);
+  }
+
+  try {
+    await initializeAdmin();
+  } catch (err) {
+    logger.error('Failed to initialize admin user, aborting startup', { error: err.message });
     process.exit(1);
   }
 
