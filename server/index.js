@@ -16,6 +16,7 @@ const httpServer = createServer(app);
 
 // WebSocket for real-time logs
 const io = new Server(httpServer, {
+  path: '/socket.io',
   cors: {
     origin: '*',
     methods: ['GET', 'POST']

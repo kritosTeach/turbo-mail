@@ -7,7 +7,7 @@ const App = {
     token: null,
     socket: null,
     charts: {},
-    wsUrl: `ws://${window.location.hostname}:3001`
+    wsUrl: null
   },
 
   init() {
@@ -173,23 +173,23 @@ const App = {
   connectWebSocket() {
     if (this.state.socket) return;
     try {
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+      const socket = io({
+        path: '/socket.io',
+        reconnection: true,
+        reconnectionDelay: 5000,
+        reconnectionAttempts: Infinity
+      });
 
-      ws.onopen = () => console.log('WebSocket connected');
-      ws.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          this.handleWebSocketMessage(data);
-        } catch(e) {}
-      };
-      ws.onclose = () => {
-        console.log('WebSocket disconnected, reconnecting in 5s...');
-        setTimeout(() => { this.state.socket = null; this.connectWebSocket(); }, 5000);
-      };
-      this.state.socket = ws;
+      socket.on('connect', () => console.log('WebSocket connected:', socket.id));
+      socket.on('disconnect', (reason) => console.log('WebSocket disconnected:', reason));
+      socket.on('connect_error', (err) => console.log('WebSocket connection error:', err.message));
+
+      socket.on('email:sent', (data) => this.handleWebSocketMessage({ type: 'email:sent', ...data }));
+      socket.on('email:failed', (data) => this.handleWebSocketMessage({ type: 'email:failed', ...data }));
+
+      this.state.socket = socket;
     } catch(e) {
-      console.log('WebSocket not available, using polling fallback');
+      console.log('WebSocket not available:', e.message);
     }
   },
 
@@ -257,7 +257,7 @@ const App = {
       localStorage.removeItem('turbomailer_user');
       this.state.user = null;
       this.state.token = null;
-      if (this.state.socket) { this.state.socket.close(); this.state.socket = null; }
+      if (this.state.socket) { this.state.socket.disconnect(); this.state.socket = null; }
       this.showLogin();
     });
   },
