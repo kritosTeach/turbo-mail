@@ -25,7 +25,7 @@ router.post('/login', rateLimiter, (req, res, next) => {
       const token = jwt.sign(
         { id: user.id, username: user.username, role: user.role },
         process.env.JWT_SECRET || 'jwt-secret',
-        { expiresIn: process.env.JWT_EXPIRY || '24h' }
+        { expiresIn: process.env.JWT_EXPIRY || '7d' }
       );
 
       res.json({
