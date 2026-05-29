@@ -36,23 +36,27 @@ async processBulkImport() {
   const encryption = document.getElementById('bulk-encryption').value;
   const priority = parseInt(document.getElementById('bulk-priority').value);
   
-  const lines = input.split('\n').filter(line => line.trim().includes('|'));
+  // تنظيف المدخلات وحذف المسافات الفارغة
+  const lines = input.split('\n').map(l => l.trim()).filter(l => l.includes('|'));
+  
   const smtps = lines.map(line => {
-    const [host, port, user, pass] = line.split('|');
+    const parts = line.split('|').map(p => p.trim());
+    if (parts.length < 4) return null; // تخطي الأسطر غير المكتملة
+    
     return {
-      name: host,
-      host: host.trim(),
-      port: parseInt(port.trim()),
-      username: user.trim(),
-      password: pass.trim(),
+      name: parts[0],
+      host: parts[0],
+      port: parseInt(parts[1]),
+      username: parts[2],
+      password: parts[3],
       encryption: encryption,
       auth_method: 'login',
       priority: priority
     };
-  });
+  }).filter(s => s !== null);
 
   if (smtps.length === 0) {
-    App.showToast('No valid SMTP format found', 'error');
+    App.showToast('Format error: use host|port|user|pass', 'error');
     return;
   }
 
