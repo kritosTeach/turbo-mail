@@ -9,6 +9,7 @@ const { createServer } = require('http');
 const { Server } = require('socket.io');
 const passport = require('./config/passport');
 const logger = require('./utils/logger');
+const { runMigrations } = require('./config/database');
 
 const app = express();
 const httpServer = createServer(app);
@@ -106,7 +107,19 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, () => {
-  logger.info(`TurboMailer Pro running on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+
+async function start() {
+  try {
+    await runMigrations();
+  } catch (err) {
+    logger.error('Failed to run database migrations, aborting startup', { error: err.message });
+    process.exit(1);
+  }
+
+  httpServer.listen(PORT, () => {
+    logger.info(`TurboMailer Pro running on port ${PORT}`);
+    logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  });
+}
+
+start();
