@@ -90,10 +90,8 @@ async processBulkImport() {
             <h2 class="text-2xl font-bold">SMTP Manager</h2>
             <p class="text-gray-500 text-sm">Manage your SMTP relay servers</p>
           </div>
-          <button onclick="SmtpManager.showAddModal()" class="btn btn-primary">
-            <i class="fas fa-plus"></i>
-          </button>
           <button onclick="SmtpManager.showBulkImportModal()" class="btn btn-secondary"><i class="fas fa-file-import"></i> Bulk Import</button>
+            <button onclick="SmtpManager.showAddModal()" class="btn btn-primary"><i class="fas fa-plus"></i> Add Server</button>
         </div>
         <div class="card">
           <div class="table-container">
