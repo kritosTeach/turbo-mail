@@ -8,33 +8,53 @@ const mailer = require('../services/mailer');
 // Bulk import SMTPs
 router.post('/bulk', isAuthenticated, async (req, res) => {
   const { smtps } = req.body;
-  if (!Array.isArray(smtps)) return res.status(400).json({ error: 'Invalid data format' });
+  if (!Array.isArray(smtps) || smtps.length === 0) {
+    return res.status(400).json({ error: 'Invalid data format' });
+  }
 
-  const client = await db.getClient();
-  try {
-    await client.query('BEGIN');
-    let count = 0;
+  let succeeded = 0;
+  const failures = [];
 
-    for (const smtp of smtps) {
-      const encryptedPassword = encrypt(smtp.password);
+  for (const smtp of smtps) {
+    // Validate required fields
+    if (!smtp.host || !smtp.port || !smtp.username || !smtp.password) {
+      failures.push({ entry: smtp.host || '(unknown)', reason: 'Missing required fields' });
+      continue;
+    }
+
+    const port = parseInt(smtp.port, 10);
+    if (isNaN(port)) {
+      failures.push({ entry: smtp.host, reason: 'Invalid port number' });
+      continue;
+    }
+
+    let encryptedPassword;
+    try {
+      encryptedPassword = encrypt(smtp.password);
+    } catch (encErr) {
+      failures.push({ entry: smtp.host, reason: `Encryption error: ${encErr.message}` });
+      continue;
+    }
+
+    const client = await db.getClient();
+    try {
       await client.query(
         `INSERT INTO smtp_servers (name, host, port, encryption, username, password_encrypted, auth_method, priority, created_by)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [smtp.name, smtp.host, smtp.port, smtp.encryption, smtp.username, encryptedPassword, 'login', smtp.priority, req.user.id]
+        [smtp.name || smtp.host, smtp.host, port, smtp.encryption || 'tls',
+         smtp.username, encryptedPassword, 'login', smtp.priority || 0, req.user.id]
       );
-      count++;
+      succeeded++;
+    } catch (dbErr) {
+      failures.push({ entry: smtp.host, reason: dbErr.message });
+    } finally {
+      client.release();
     }
-
-    await client.query('COMMIT');
-    await auditLog(req, 'bulk_import_smtp', 'smtp_server', null, { count });
-    
-    res.json({ success: true, count });
-  } catch (err) {
-    await client.query('ROLLBACK');
-    res.status(500).json({ error: err.message });
-  } finally {
-    client.release();
   }
+
+  await auditLog(req, 'bulk_import_smtp', 'smtp_server', null, { succeeded, failed: failures.length });
+
+  res.json({ success: true, count: succeeded, failed: failures.length, failures });
 });
 // List all SMTP servers
 router.get('/', isAuthenticated, async (req, res) => {

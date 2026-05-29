@@ -34,29 +34,39 @@ showBulkImportModal() {
 async processBulkImport() {
   const input = document.getElementById('bulk-smtp-input').value;
   const encryption = document.getElementById('bulk-encryption').value;
-  const priority = parseInt(document.getElementById('bulk-priority').value);
-  
-  // تنظيف المدخلات وحذف المسافات الفارغة
-  const lines = input.split('\n').map(l => l.trim()).filter(l => l.includes('|'));
-  
-  const smtps = lines.map(line => {
+  const priority = parseInt(document.getElementById('bulk-priority').value) || 0;
+
+  // Split by newlines, trim each line, drop empty lines and lines without a pipe
+  const lines = input.split('\n')
+    .map(l => l.trim())
+    .filter(l => l && l.includes('|'));
+
+  const smtps = [];
+  for (const line of lines) {
     const parts = line.split('|').map(p => p.trim());
-    if (parts.length < 4) return null; // تخطي الأسطر غير المكتملة
-    
-    return {
-      name: parts[0],
-      host: parts[0],
-      port: parseInt(parts[1]),
-      username: parts[2],
-      password: parts[3],
-      encryption: encryption,
+    // Require exactly 4 parts: host, port, username, password
+    if (parts.length !== 4) continue;
+
+    const [host, rawPort, username, password] = parts;
+    const port = parseInt(rawPort, 10);
+
+    // Skip lines where any required field is empty or port is not a number
+    if (!host || !username || !password || isNaN(port)) continue;
+
+    smtps.push({
+      name: host,
+      host,
+      port,
+      username,
+      password,
+      encryption,
       auth_method: 'login',
-      priority: priority
-    };
-  }).filter(s => s !== null);
+      priority
+    });
+  }
 
   if (smtps.length === 0) {
-    App.showToast('Format error: use host|port|user|pass', 'error');
+    App.showToast('No valid entries found. Use format: host|port|user|pass', 'error');
     return;
   }
 
@@ -64,20 +74,24 @@ async processBulkImport() {
     App.showLoading(true);
     const res = await fetch('/api/smtp/bulk', {
       method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json', 
-        'Authorization': `Bearer ${App.state.token}` 
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${App.state.token}`
       },
       body: JSON.stringify({ smtps })
     });
-    
+
+    const data = await res.json();
+
     if (res.ok) {
-      const data = await res.json();
       App.closeModal();
-      App.showToast(`Successfully imported ${data.count} SMTP servers`, 'success');
+      const msg = data.failed > 0
+        ? `Imported ${data.count} SMTP server(s); ${data.failed} skipped`
+        : `Successfully imported ${data.count} SMTP server(s)`;
+      App.showToast(msg, data.failed > 0 ? 'warning' : 'success');
       SmtpManager.load();
     } else {
-      throw new Error('Bulk import failed');
+      throw new Error(data.error || 'Bulk import failed');
     }
   } catch(e) {
     App.showToast(e.message, 'error');

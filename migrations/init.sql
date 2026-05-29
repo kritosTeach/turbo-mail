@@ -20,11 +20,11 @@ CREATE TABLE IF NOT EXISTS users (
 -- SMTP Servers
 CREATE TABLE IF NOT EXISTS smtp_servers (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    name VARCHAR(100) NOT NULL,
-    host VARCHAR(255) NOT NULL,
+    name TEXT NOT NULL,
+    host TEXT NOT NULL,
     port INTEGER NOT NULL DEFAULT 587,
     encryption VARCHAR(20) NOT NULL DEFAULT 'tls' CHECK (encryption IN ('tls', 'ssl', 'starttls', 'none')),
-    username VARCHAR(255),
+    username TEXT,
     password_encrypted TEXT,
     auth_method VARCHAR(20) DEFAULT 'login' CHECK (auth_method IN ('login', 'anonymous', 'none')),
     max_connections INTEGER DEFAULT 5,
